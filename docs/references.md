@@ -171,7 +171,7 @@ them harder than on anything published. `[local]`
 | ball coordinates outside the pitch | 27.6% of dead frames, 0.0% of live ones | a near-pure `D` signal, worth 4.0 log-odds |
 | mean tracked speed | 1.43 m/s dead, 2.38 m/s live | movement is the dead-ball signal that survives a lost ball |
 | share of players above 3 m/s | 8.7% dead, 30.6% live | the strongest single movement feature |
-| ball absent | 33.6% of dead frames, 6.4% of live ones | absence is evidence, far from sufficient |
+| ball absent | 33.6% of dead frames, 6.5% of live ones | absence is evidence, far from sufficient |
 | set-piece intervals | 15.9% of the window, 45.4% of its dead frames | restarts are where dead ball concentrates |
 | track slots | 24 home, 22 away | an unnormalised sum over slots biases ownership toward home |
 | team centroid nearer the ball, ball absent | the *defending* team, 384 of 384 | the formation term enters with a negative sign |
