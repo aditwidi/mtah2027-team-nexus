@@ -1,3 +1,8 @@
 # Optional. Needed for the pipeline tests; the scorer itself needs only numpy and pandas.
 -r requirements.txt
+# Optional. Needed for the pipeline tests and for the figures; the scorer itself needs only numpy
+# and pandas.
+-r requirements.txt
 pytest
+matplotlib
+

@@ -32,6 +32,7 @@ Check it and reproduce the evidence:
 ```bash
 python evaluation/run_evaluation.py   # macroF1 / spellF1 on the 5 published minutes
 python -m pipeline.cli.ablate         # the label-free ablation table (no labels exist there)
+python docs/figures/make_figures.py    # redraw the figures (matplotlib only)
 python -m pytest -q                   # 36 tests, no match data required, < 1 s
 ```
 
@@ -46,6 +47,8 @@ python -m pytest -q                   # 36 tests, no match data required, < 1 s
 | `docs/technical-document.md` | the submitted technical document (approach, rules, training data, limitations, reproduction) |
 | `docs/pipeline.md` | per-step measurements: what was tried, kept, and rejected |
 | `docs/references.md` | literature review, and the design decision each source drove |
+| `docs/figures/` | the five figures in the documents, drawn by `make_figures.py` (matplotlib, no data needed) |
+| `docs/build_pdf.py` | renders the technical document to PDF, figures inlined |
 | `tests/` | 36 tests, no match data needed |
 
 The match bundles are **not** in this repository — `data/` and `artifacts/` are gitignored, and

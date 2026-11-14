@@ -282,25 +282,11 @@ that came out of Step 7 came from an aggregate rate over hundreds of frames.
 The final ablation, measured on the whole match with no labels involved. The band is roughly 200
 possessions per half, from the football prior on possession length.
 
-```
-variant                                        possessions   mean s
-argmax of the emissions, no decoder       ██████████████████████████████  774    4.30
-no multi-scale context                    ████████████████████████████    734    4.56
-unnormalised ownership margin             ███████████████████████         597    5.46
-raw (unsigned) Smart Tagging prior        ████████████████████            528    6.24
-switch cost 2.0                           ████████████████████            514    6.50
-no tag prior                              ███████████████████             495    6.63
-switch cost 4.0                           ██████████████████              477    6.99
-no confidence discount, no distance gate  ██████████████████              452    7.38
-minimum possession 1 s (25 frames)        █████████████████               446    7.49
-switch cost 10.0                          █████████████████               442    7.54
-minimum possession 3 s (75 frames)        █████████████████               438    7.61
-final                                     █████████████████               438    7.61
-still-ball weight 3.0                     ████████████████                424    8.05
-restart prior at weight 2.5 (rejected)    ████████████████                411    7.21
-no still-ball duration                    ███████████████                 394    9.14
-                                                         └──────────── target band 400–440
-```
+![Every decoder decision, measured without labels](figures/ablation.svg)
+
+*The bar is the possession count over the whole match; the number beside it is the mean possession
+duration. The shaded band is where a possession count should land given a 400–440 possession match,
+which is what the football prior on possession length implies over ~106 minutes of play.*
 
 Reading it honestly: the multi-scale context and the switch penalty do most of the work; the tag prior
 is worth about 80 possessions of structure; the still-ball duration term is what keeps the dead share

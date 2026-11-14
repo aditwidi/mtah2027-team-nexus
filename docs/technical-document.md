@@ -37,6 +37,11 @@ On the 154 minutes that carry no labels we can only measure structure, and that 
 | home share of live play | 0.564 |
 | transitions | 6.8 per minute |
 
+![Progress on the public window](figures/results.svg)
+
+*The path from the published floor to the submitted configuration. The last two bars are the same
+code with the set-piece term switched off and on.*
+
 One warning before the numbers are read as a ranking. The public window is 17 possessions. Two
 configurations of ours that are identical in code, differing only in whether an `exp()` underflows to
 1.0, flip 568 frames of Viterbi tie-breaking and move `spellF1` by 0.015 — on a window where the whole
@@ -67,16 +72,11 @@ does the design work for us. `CHALLENGE.md` settles three things we would otherw
 a possession is a maximal run of one team with the ball alive; a dead ball is a stoppage and never a
 possession; and a stoppage between two runs of the same team keeps them separate.
 
-```
-one possession                        two possessions
-┌──────────────────────────┐          ┌───────────┐   ┌───────────┐
-│ H H H H H H H H H H H H  │          │ H H H H H │ D │ H H H H H │
-└──────────────────────────┘          └───────────┘   └───────────┘
-   one spell, one chance                 two spells
-   to match the truth                    even though the team never changed
+![What counts as one possession](figures/decode.svg)
 
-                                        also two possessions: H H A A
-```
+*Left: the three states and the switch costs the decoder charges for moving between them. Right: the
+two cases `CHALLENGE.md` settles for us — a stoppage between two runs of the same team keeps them
+separate, and a change of team is a possession event even with no stoppage in between.*
 
 The other thing the metric does is punish the wrong kind of error asymmetrically. Missing a stoppage
 merges two possessions into one, which costs two matches. Inventing a stoppage splits one possession
@@ -87,36 +87,11 @@ dwell times on both states rather than a smoothing window.
 
 ## 3. The pipeline
 
-```
-  data bundle (gated, not in the repo)
-  ┌─────────────────────────────────────┐
-  │ tactical ATD   46 slots + ball      │  positions, speeds, 25 fps
-  │ Smart Tagging  638 phases           │  team, half, set-piece type
-  │ homography     199,319 rows         │  reprojection error only
-  └────────────────┬────────────────────┘
-                   │  read, align to video frame, no labels
-                   ▼
-  ┌─────────────────────────────────────┐
-  │ features.npz   199 channels         │  159 MB, one row per video frame
-  │                × 199,319 rows       │  row i = submission row i
-  └────────────────┬────────────────────┘
-                   │
-       ┌───────────┴────────────┐
-       ▼                        ▼
-  dead head                possession head
-  ball gap, stillness,     neighbourhood margin between
-  set-piece, still ball,   the two teams, plus a formation
-  ball outside the pitch   term used only when the ball is lost
-       │                        │
-       └───────────┬────────────┘
-                   ▼
-        Viterbi over {H, A, D}
-        switch H↔A 6.0   switch alive↔dead 2.5
-                   ▼
-        structural cleanup: minimum 3 s possession, 1 s stoppage
-                   ▼
-        team-nexus.csv   199,319 rows, ~2 s
-```
+![The pipeline](figures/pipeline.svg)
+
+*Everything above is deterministic and rebuilt in about ten seconds; the gated bundle is the only
+input. The two heads never see each other, and the decoder is the only place where the three labels
+compete.*
 
 ### 3.1 Reading the data, and getting the frame index right
 
@@ -160,8 +135,9 @@ Two of those constants came out of measurement, and both first guesses were wron
 
 **The gap-to-dead weight was far too strong.** The ground truth comes from *corrected* tracking, which
 knows the ball is in play while ours has lost it. In the public window, 391 truth-alive frames had a
-median ball gap of 5.6 seconds, and our original weight called 98.7% of them dead. Halving the
-per-second weight and the long-gap bonus raised `D` precision from 0.69 to 0.75 with recall unchanged.
+median ball gap of 5.6 seconds, and our original weight called 98.7% of them dead. Cutting the
+per-second weight from 0.55 to 0.40 and the long-gap bonus from 1.2 to 0.8 raised `D` precision from
+0.69 to 0.75 with recall unchanged.
 
 **A set piece with a stationary ball is dead, and the model could not say so.** The stillness feature
 needs *slow players*; at a throw-in or a free kick the players are jogging into position at 1–3 m/s
@@ -324,6 +300,11 @@ that a restart-timing signal would fix. Our attempt to use the tagged intervals 
 measurable reason: play resumes inside a tagged interval and nothing in the data says when the ball
 was struck.
 
+![Per-class confusion on the public window](figures/confusion.svg)
+
+*Row-normalised, so the diagonal is recall. The D row is the weakest: one in eight dead frames is
+called away possession, which is the "ball visible, looks live, play is stopped" failure above.*
+
 **The full match is not the public window.** This is our largest open risk and we would rather state
 it than leave it for a scorer to discover. In the first five minutes the ball is visible on 88% of
 frames; over the rest of the match it is visible on 56–59%. Our dead-ball evidence is partly built on
@@ -334,6 +315,11 @@ ball absence, so the predicted dead share grows with the ball gap:
 | first 5 minutes (the public window) | 0.882 | 0.176 | 0.196 |
 | rest of the first half | 0.563 | 0.478 | not published |
 | second half | 0.593 | 0.507 | not published |
+
+![Dead share by region](figures/deadshare.svg)
+
+*Our own largest open risk, drawn honestly: the dead share triples between the only labelled five
+minutes and the rest of the match, tracking the fall in ball visibility.*
 
 The public window is the least representative five minutes of the match for the ball, and it is also
 the only labelled data we have. 0.478 dead over the whole match is above the 35–40% football prior,
@@ -374,6 +360,10 @@ python evaluation/validate_submission.py team-nexus.csv
 # optional: score the public window, and rebuild the ablation table
 python evaluation/run_evaluation.py
 python -m pipeline.cli.ablate
+
+# optional: redraw the figures (matplotlib only) and rebuild this document as a PDF
+python docs/figures/make_figures.py
+python docs/build_pdf.py --out artifacts/upload/team-nexus.pdf
 
 # 36 tests, no match data required
 python -m pytest -q
