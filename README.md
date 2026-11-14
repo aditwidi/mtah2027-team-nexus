@@ -49,8 +49,9 @@ python -m pytest -q                   # 36 tests, no match data required, < 1 s
 
 The match bundles are **not** in this repository — `data/` and `artifacts/` are gitignored, and
 nothing here redistributes the gated assets or a reconstruction of them. Everything below the line
-is the organisers' challenge repository (MIT), kept verbatim so the task definition, the scorer and
-the public ground truth sit next to the code that uses them.
+is the organisers' challenge repository (MIT): their task, data, metric, scorer and public ground
+truth. We changed only three things down there — the reading list, the file listing and the
+requirements section gained a line about our code — and marked them where they appear.
 
 ---
 
@@ -175,6 +176,11 @@ Full description of every asset and how the frames line up: **[DATA.md](DATA.md)
 | **[FAQ.md](FAQ.md)** | |
 | **[OVERVIEW.md](OVERVIEW.md)** | the competition as a whole — context, why the 2027 format changed, the calendar |
 
+Then ours: **[docs/technical-document.md](docs/technical-document.md)** (the document we submit —
+approach, rules implemented, training data, limitations, reproduction),
+**[docs/pipeline.md](docs/pipeline.md)** (per-step measurements: what was tried, kept and rejected),
+**[docs/references.md](docs/references.md)** (literature review and the decision each source drove).
+
 
 ---
 
@@ -198,7 +204,20 @@ starter/
   02_tracking_atd.ipynb     guided tour of the tracking data, with plots
   03_first_submission.ipynb data in, scored submission out — start here
 data/                       unpack the downloaded match assets here. Empty in a fresh clone
+
+pipeline/                   Team Nexus's submission pipeline (added here — see above)
+  data/                     video-frame-indexed readers and the 197-channel feature matrix
+  model/                    emissions and priors, Viterbi + structural cleanup
+  checks/                   label-free diagnostics, phase oracle, video overlay renderer
+  cli/                      `submit`, `ablate`
+docs/                       technical document (submitted), per-step measurements, references
+tests/                      36 tests, no match data needed
+requirements-lock.txt       exact versions the reported numbers were measured on
 ```
+
+`games.py`, `evaluation/`, `starter/` and `data/` are the organisers' starter repository, unchanged —
+except `evaluation/reports/nexus/nexus_final.json` and `evaluation/reports/ablations/abl_final.json`,
+two aggregate reports we committed as evidence for the technical document's tables.
 
 The scorer you run locally is the scorer that decides the competition. If it scores on your
 machine, it scores the same way on ours.
@@ -214,6 +233,11 @@ more either — you can reach a scored submission without installing anything el
 The notebooks additionally want `kloppy` and `matplotlib` (`requirements-starter.txt`), and
 **Python 3.9+ is recommended for those**: on Windows, installing Jupyter under 3.8 hits a
 `pywinpty` build failure that has nothing to do with this repository.
+
+The pipeline in `pipeline/` has the same two dependencies and no others — no torch, no sklearn, no
+video decoding. The numbers in the technical document were measured on Python 3.14.7 with
+`requirements-lock.txt`; on older interpreters `requirements.txt` is enough and produces the same
+file.
 
 ---
 
