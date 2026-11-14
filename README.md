@@ -9,7 +9,7 @@ Phase 1: one label (`H` / `A` / `D` / `X`) for each of the 199,319 frames of the
 | Submission file | `team-nexus.csv` — 199,319 rows, `frame,label` |
 | Technical document | [`docs/technical-document.md`](docs/technical-document.md) |
 | Method | evidential per-frame scores + a structured Viterbi decode; **no learned model, no training data, no video** |
-| Public 5 minutes | **macroF1 0.7666 · spellF1 0.4800** (published floor `baseline_smooth50`: 0.6207 / 0.3256) |
+| Public 5 minutes | **macroF1 0.8073 · spellF1 0.4941** (published floor `baseline_smooth50`: 0.6207 / 0.3256) |
 
 ## Reproduce the submission
 
@@ -24,7 +24,8 @@ python evaluation/validate_submission.py team-nexus.csv
 ```
 
 Deterministic: numpy only, no RNG, fixed feature ordering — the same bundle gives a byte-identical
-file. The submitted file's `md5` is recorded in §8 of the technical document.
+file, `md5 4141029a8480a78454ede4906280f270`. The submitted file's md5 is recorded in §9 of the
+technical document.
 
 Check it and reproduce the evidence:
 
@@ -38,7 +39,7 @@ python -m pytest -q                   # 36 tests, no match data required, < 1 s
 
 | path | what |
 |---|---|
-| `pipeline/data/` | readers (everything indexed to the video frame) and the 197-channel feature matrix |
+| `pipeline/data/` | readers (everything indexed to the video frame) and the 199-channel feature matrix |
 | `pipeline/model/` | emissions and priors, Viterbi + structural cleanup, learned-emission experiments |
 | `pipeline/checks/` | label-free diagnostics, the Smart-Tagging phase oracle, a video overlay renderer |
 | `pipeline/cli/` | `submit`, `ablate` |
@@ -206,7 +207,7 @@ starter/
 data/                       unpack the downloaded match assets here. Empty in a fresh clone
 
 pipeline/                   Team Nexus's submission pipeline (added here — see above)
-  data/                     video-frame-indexed readers and the 197-channel feature matrix
+  data/                     video-frame-indexed readers and the 199-channel feature matrix
   model/                    emissions and priors, Viterbi + structural cleanup
   checks/                   label-free diagnostics, phase oracle, video overlay renderer
   cli/                      `submit`, `ablate`

@@ -1,392 +1,268 @@
-# Literature review: how to improve the possession pipeline
+# What the literature said, and what we did with it
 
-Working notes for **More than a Hack 2027** (frame-level ball possession, Metrica Sports × FC Barcelona).
-Compiled 2026-11-11. Purpose: ground every design decision in published evidence, and keep a citable
-record for the technical document required by [SUBMISSION.md](../SUBMISSION.md).
+Background reading for **More than a Hack 2027**, frame-level ball possession (Metrica Sports ×
+FC Barcelona), compiled while the pipeline was being built. This is not a survey. It is a record of
+which published results changed our design, which ones we checked against this dataset and found
+wanting, and how confident we are in each number we quote.
 
-**Read the evidence-quality section (§10) before quoting any number from this file.** Some figures
-were read from open-access full text; others were summarised by a search provider because the
-publisher PDF was access-controlled. Each claim is tagged `[full text]`, `[abstract]`, or
-`[summary]`.
-
----
-
-## 0. TL;DR — eight findings that drive the design
-
-1. **There is exactly one paper on this task**: Borghesi et al. 2023, *{home, away, dead} per frame
-   from tracking data*. 86.2% possession accuracy, 89.2% dead/alive. `[abstract]`
-2. **Ball-only input is bad at possession (58.4%) and good at dead/alive (83.6%); the five nearest
-   players are the reverse (79.4% on the 3-class problem).** So possession and dead-ball are two
-   different sub-problems and must not share one decision rule. `[summary]`
-3. **Dead/alive can be classified from player positions alone** at 92.0% accuracy / 93.1% F1 using
-   AdaBoost on ~1,320 tabular features. The ball is not required. `[summary]`
-4. **Multi-scale time shifts are the cheapest feature win in the literature**: position, velocity
-   and acceleration of all 22 players at 15 log-spaced lags from 0.4 s to 80 s. `[summary]`
-5. **A min-duration stage is standard**, not a hack: a 3.64 s median filter for stoppage extraction,
-   with <2 s stoppages excluded from evaluation. Our "merge/denoise possessions" layer is the same
-   family of method. `[summary]`
-6. **Realistic boundary accuracy is ~1.5–2 s** (1.8 s start, 1.7 s end timing error for stoppages).
-   Frame-exact boundaries are not achievable; short possessions are where IoU dies. `[summary]`
-7. **Missing-data indicators are features, not noise.** Borghesi feeds explicit missing-data flags.
-   With our ball absent on 41% of graded frames, *the pattern of absence* is evidence. `[summary]`
-8. **No paper optimises possession-level metrics.** All of them maximise frame accuracy or F1; our
-   ranking metric (`spellF1`, one-to-one possession matching at IoU 0.3–0.7) is unaddressed by the
-   literature. The structured decoding layer is therefore where we can beat the published methods,
-   and the challenge's own baseline sweep already shows a 5× swing from smoothing alone.
+Every figure below is tagged. `[full text]` means we read it in the paper. `[abstract]` means the
+publisher's abstract page. `[summary]` means a search provider's synthesis of a paywalled manuscript,
+and those should be treated as second-hand. `[local]` means we measured it on this dataset ourselves
+and it is reproducible from the repository. Two of the three papers that shaped the design are in the
+third group, so read §9 before quoting anything from here.
 
 ---
 
-## 1. The task-defining paper
+## 1. There is one paper on this exact task
 
-### Borghesi, Dusty Costa, Morra, Lamberti (2023) — *Using Temporal Convolutional Networks to Estimate Ball Possession in Soccer Games*
-*Expert Systems with Applications* 234:119780 · DOI [10.1016/j.eswa.2023.119780](https://doi.org/10.1016/j.eswa.2023.119780)
-· accepted-version PDF: [iris.polito.it](https://iris.polito.it/retrieve/8cc27103-7ee0-4243-8a04-0b256f77ad39/eswa_tcn_authors_accepted_version.pdf)
+Borghesi, Dusty Costa, Morra and Lamberti (2023), *Using Temporal Convolutional Networks to Estimate
+Ball Possession in Soccer Games*, Expert Systems with Applications 234:119780. Its output space is
+ours: a per-frame label of home possession, away possession, or dead ball, from optical tracking. It
+reports 86.2% possession accuracy and 89.2% on dead/alive. `[abstract]`
 
-The only paper we found whose output space matches this challenge exactly: a per-frame label of
-*home possession / away possession / dead ball* from optical tracking.
+The headline numbers are not what we used. The **input ablation** is. `[summary]`
 
-**Inputs.** Sequences of tracked objects; features per object: coordinates, velocity, **team**,
-**role**, player identity, and **missing-data indicators**. Objects are embedded individually and
-combined with permutation-invariant aggregation (so the model does not depend on track ordering —
-directly relevant to our 46 anonymous, swapping track slots).
-
-**Architecture.** Temporal Convolutional Networks; the best variant is **two branches with
-self-attention**. Causal or acausal context both supported — future frames help accuracy but are
-unsuitable for strict real-time. *We are offline, so acausal context is free for us.*
-
-**Results.** 86.2% possession-estimation accuracy (+7.3 pp over reimplemented rule-based
-state-of-the-art) and 89.2% dead/alive accuracy (+33.2 pp). Mean overall accuracy across variants
-82.93% ± 1.71%. Inference ~16 fps on a consumer GPU (comfortably faster than 25 fps video, i.e.
-real-time capable).
-
-**Ablations — the most useful part for us.** `[summary]`
-
-| input | 3-class game state | active/inactive |
+| input to the classifier | three-class state | alive / dead |
 |---|---|---|
-| ball only | **58.35%** | 83.62% |
-| five players closest to the ball | **79.41%** | — |
-| full model | 86.2% (possession) | 88.25–89.2% |
+| ball only | 58.35% | 83.62% |
+| the five players closest to the ball | 79.41% | — |
+| the full model | 86.2% | 88.25–89.2% |
 
-Interpretation we adopt: **the ball is the dead-ball detector; the neighbourhood of players is the
-possession detector.** A single nearest-player rule (our published baseline) throws away most of
-the available signal on *both* heads.
+Read those two columns together and the design of the challenge becomes obvious. The ball is a good
+dead-ball sensor and a poor possession sensor. The neighbourhood of players around the ball is the
+reverse. A single decision rule fed by one input, which is what the published baseline in this
+repository is, loses most of the available signal on *both* heads for different reasons.
 
-**Caveats stated by the authors.** Dataset is a limited selection of high-quality games with
-manually labelled states (~40% dead, roughly equal home/away); train/val/test split by match,
-stadium and teams; rule-based competitors were reimplemented with hyperparameters retained from
-prior work, so the +7.3/+33.2 pp margins are not a clean comparison.
+That is where our two-head split came from: dead and possession are scored independently, from
+different evidence, and only meet in the decoder.
 
----
+Two other details from the paper mattered. It feeds explicit **missing-data indicators** as features,
+which is the right instinct when the ball is absent on 41% of the graded frames here. And its
+sequence model aggregates players in a permutation-invariant way, which is the only workable choice
+with 46 anonymous track slots that swap identity.
 
-## 2. Dead-ball / "in-game status" detection
+Caveats the authors state themselves, and we believe them: the dataset is a selection of
+high-quality matches with manual labels, the train/validation/test split is by match and team, and the
+rule-based competitors were reimplemented with inherited hyperparameters, so the +7.3 and +33.2
+point margins are not a clean comparison.
 
-### Lang, Wild, Isenko, Link (2022) — *Predicting the in-game status in soccer with machine learning using player movement data*
-*Scientific Reports* 12:6843 · [nature.com/articles/s41598-022-19948-1](https://www.nature.com/articles/s41598-022-19948-1)
+## 2. Dead ball is a different problem, and it does not need the ball
 
-Binary **active vs interrupted** from 25 fps tracking of all 22 players — **no ball data**.
+Lang, Wild, Isenko and Link (2022), *Predicting the in-game status in soccer with machine learning
+using player movement data*, Scientific Reports 12:6843, classifies active versus interrupted from
+25 fps tracking of all 22 players with **no ball data at all**. It reports 92.0% frame accuracy and
+93.1% F1 across 47 test matches from the Bundesliga. `[summary]`
 
-**Features.** Player position, velocity and acceleration, augmented with **7 past and 7 future time
-shifts** spanning ~0.4 s to 80 s → **1,320 features** (≈ 22 players × 4 channels × 15 lags).
-Multi-scale context, acausal by design.
+Three things in it were worth more to us than the accuracy figure:
 
-**Model.** AdaBoost (classical, CPU-trainable in minutes) beat the other classical models tested.
+- **Multi-scale time shifts.** The feature set is position, velocity and acceleration at seven past
+  and seven future shifts spanning about 0.4 s to 80 s, roughly 1,320 features. That is the cheapest
+  feature win in the literature and it is exactly what our context group does.
+- **A median filter over the output.** Their 3.64 s median filter extracts stoppage intervals, and
+  stoppages under 2 s are excluded from evaluation. Published practice therefore agrees with the
+  challenge's argument that a segmentation layer beats per-frame cleverness.
+- **A realistic boundary error of about 1.7–1.8 s.** This one changed our expectations rather than our
+  code. A 1.5 s error on each edge of a 14 s possession leaves IoU around 0.80; on a 4 s possession it
+  is fatal. The consequence is that short possessions have to be protected, and frame-exact edges are
+  not worth chasing.
 
-**Results.** **92.0% frame accuracy, 93.1% frame F1** on 47 test matches (102 Bundesliga matches in
-total). For stoppages longer than 2 s: **precision 81.1%, recall 78.9%**, ~0.80 mean F1, with
-**start/end timing errors of 1.8 s / 1.7 s**. A **3.64 s median filter** is used to extract stoppage
-intervals, and stoppages shorter than 2 s are excluded.
+Their model is tabular AdaBoost, not a deep network, which is worth noting for anyone assuming this
+head needs sequence models.
 
-**Why this matters for us.**
+## 3. The adjacent work we deliberately did not follow
 
-- Confirms `D` is detectable from *player behaviour* (players stop, converge, walk back into
-  position), which is exactly what we need on the 41% of frames with no ball.
-- Confirms a **tabular, gradient-boosted model on engineered multi-scale features** is competitive
-  with deep sequence models for this head — a good fit for a 4 GB GTX 1650 Ti and a 3–4 day budget.
-- Sets a realistic expectation for **boundary accuracy ~1.5–2 s**. Consequence for `spellF1`: a
-  ~1.5 s error on each edge of a 14 s possession gives IoU ≈ 0.80; on a 4 s possession it is fatal.
-  **Protect the existence of short possessions; do not chase frame-exact edges.**
-- The median filter *is* a structured-decoding step. Published practice agrees with the challenge's
-  argument that smoothing/segmentation is worth more than per-frame cleverness.
+**Kim et al. (2023), Ball Radar** `[abstract]` reconstructs ball trajectories from the multi-agent
+configuration with a Set Transformer and a hierarchical Bi-LSTM, predicting possession as an
+intermediate task. It is the cleanest published statement that player context can stand in for an
+absent ball. We did not train it — the cost is far beyond the available time and the transfer to
+Metrica's automatic tracking is unproven — but it is the reason our missing-ball features are built
+around player geometry rather than around interpolating the ball harder.
 
-**Caveats.** Bundesliga only; the authors flag limited generalisation. The method uses future
-frames, so it is not deployable in strict real time (irrelevant to us).
+**Peral, Capellera, Rubio, Agudo et al. (2025, 2026)** recognise the ball possessor from video, with
+player tubes and temporal models, evaluated on 36 La Liga and Serie A matches with event timing
+accurate to about 0.6 s. The WACV 2026 paper works on tactical camera footage, which is the feed we
+have. This is the road not taken, and the honest reason is calendar: detection, tracking and tube
+association are two or more days of infrastructure before the first possession label exists, and they
+lead back to a signal we already hold numerically. It also sets a useful reference point — 0.6 s event
+timing is what video-level supervision buys, so our 1.5 s tracking-only boundary error is respectable
+rather than embarrassing.
 
----
+**Vidal-Codina et al. (2022)** is the deterministic tracking-only family our published baseline
+belongs to: a possession step that decides who has the ball per frame, then event rules on top. It is
+the "rule-based state of the art" that the learning papers measure themselves against, which is a
+reminder of how much headroom sits inside the rules themselves before any model is trained.
 
-## 3. When the ball is missing: reconstructing it from players
+**Link and Hoernig (2017)** gave us vocabulary rather than method. Their taxonomy separates individual
+ball control from a single touch, and individual possession from team possession. That is precisely the
+ambiguity in `CHALLENGE.md` ("a touch is not a change of possession"; "controlled possession" as either
+a few seconds of retention or two completed passes), and it is why our rules speak in terms of
+sustained neighbourhood evidence and a minimum dwell rather than in terms of who touched the ball last.
 
-### Kim et al. (2023) — *Ball Trajectory Inference from Multi-Agent Sports Contexts Using Set Transformer and Hierarchical Bi-LSTM* ("Ball Radar")
-arXiv [2306.08206](https://arxiv.org/abs/2306.08206) · code: [github.com/hyunsungkim-ds/ballradar](https://github.com/hyunsungkim-ds/ballradar)
+**PathCRF** appeared in searching as ball-free possession inference from player trajectories. We could
+not extract its body text, nothing here depends on it, and we list it only so that a reader who finds
+it knows we saw it and could not verify it.
 
-Explicitly motivated by our exact problem: a tiny ball on a wide pitch, lost to occlusion.
+## 4. What no paper solves for this competition
 
-**Approach.** Set Transformer over the multi-agent configuration (permutation-invariant, no
-jersey-order dependence) + a **hierarchical Bi-LSTM** that **predicts ball possession as an
-intermediate task** and then regresses the ball trajectory, with a physical "reality" loss and
-post-processing. Applications listed include **missing-trajectory imputation**.
+The literature optimises frame accuracy or frame F1. None of these papers reports possession
+segmentation quality, possession count error, or one-to-one matching of possessions. This competition
+ranks on exactly that, which means the published state of the art can rank poorly here and the score
+is made in the decoding layer rather than in the classifier. The challenge's own baselines demonstrate
+it: the same algorithm four times, differing only in a smoothing window, moves `spellF1` from 0.0378 to
+0.4242 while `macroF1` barely moves.
 
-**Why it matters.** It is evidence that player context can stand in for an absent ball, and that
-possession is a useful *intermediate representation* rather than only an output. We are not going
-to train this in the time available, but it justifies the cheap analogue: predict/impute the ball
-from the surrounding players before making a possession decision.
+The other gap is label provenance. Those papers had vendor labels or manual annotations from dozens of
+matches. Here the full-match truth is private and the five public minutes are for verification, so a
+supervised emission would have to be trained on other games or on our own pseudo-labels. Both are
+allowed. Both carry risk. We tested the second and it lost (§7).
 
-**Caveats.** No quantitative results were retrievable from the abstract page `[abstract]`; training
-cost is far beyond the budget; transfer to Metrica's automatic tracking is unproven.
-
----
-
-## 4. Ball possessor recognition from video (the road not taken)
-
-### Peral, Capellera, Rubio, Agudo et al. (2025, 2026)
-- *Temporally Accurate Events Detection Through Ball Possessor Recognition in Soccer*, VISAPP 2025 ·
-  [scitepress PDF](https://www.scitepress.org/Papers/2025/133177/133177.pdf)
-- *Multi-Modal Soccer Scene Analysis with Masked Pre-Training*, WACV 2026 ·
-  [CVF PDF](https://openaccess.thecvf.com/content/WACV2026/papers/Peral_Multi-Modal_Soccer_Scene_Analysis_with_Masked_Pre-Training_WACV_2026_paper.pdf)
-
-Video-based pipeline: build player video tubes, estimate possession, identify the possessor,
-extract passes/receptions. ResNet50/TSM features, temporal modelling, rule-based event extraction.
-Evaluated on **36 La Liga and Serie A matches** with frame-level annotations; event timing accurate
-to **~0.6 s**. The WACV 2026 paper addresses **tactical camera footage** (our feed) with three heads:
-ball trajectory inference, **ball state classification**, and ball possessor identification.
-
-**Why we are not following it.** It needs pixel-level work (video decode, detection, tracking,
-tube association) that the rules permit but our calendar does not: ~2+ days of infrastructure
-before the first measurable possession label. It is also the *harder* route to a signal we already
-hold numerically. Keep it as a documented "considered and dropped" item in the technical doc, and
-as a reference point that **~0.6 s event timing is achievable with video-level supervision** —
-i.e. our ~1.5 s tracking-only boundary error is respectable, not a failure.
-
----
-
-## 5. Deterministic rule-based possession (the baseline family)
-
-### Vidal-Codina et al. (2022) — *Automatic event detection in football using tracking data*
-arXiv [2202.00804](https://arxiv.org/abs/2202.00804)
-
-Two-stage deterministic decision-tree method: (1) a **possession step** deciding which player has
-the ball per frame, (2) event rules on top (passes, receptions, etc.). This is the family our
-published baseline belongs to — nearest tracked player to the ball, then a majority vote.
-
-**Relevance.** It is the "rule-based state of the art" that Borghesi's +7.3 pp and Lang's margins are
-measured against, which tells us how much headroom there is in upgrading the rules themselves
-(neighbourhood voting, team shape, holder continuity, multi-scale context) before any learning.
-
-### Link & Hoernig (2017) — *Individual ball possession in soccer*
-*PLOS ONE* 12(7):e0179953 · [journals.plos.org](https://journals.plos.org/plosone/article?id=10.1371%2Fjournal.pone.0179953)
-
-Defines a taxonomy of possession by **start point, end point and type of ball control**: Individual
-Ball Control (IBC), Individual Ball Action (IBA), Team Ball Possession (TBP), Team Ball Control
-(TBC), Team Playmaking (TPM), with an ML approach to estimate durations.
-
-**Relevance.** This is the formal vocabulary for the ambiguity in CHALLENGE.md ("a touch is not a
-change of possession; controlled possession means the player keeps the ball / the team completes
-2+ passes"). Adopt its distinctions explicitly in our possession rules rather than inventing
-thresholds: distinguish *control* (retains the ball) from *action* (one touch) from *team
-possession* (who the ball belongs to while live).
+And their dead ball is easier than ours. Vendor-labelled stoppages, clean definitions, roughly 40%
+dead, high-quality optical tracking. Ours is derived from corrected tracking of a feed that is
+explicitly automatic and uncorrected, in which the ball is missing on 41% of the frames we are scored
+on. Their 89.2% is not a transferable expectation; the honest reference is this repository's floor.
 
 ---
 
-## 6. Ball-free possession inference (adjacent, unverified)
+## 5. The six decisions the reading produced
 
-### *PathCRF: Ball-Free Soccer Event Detection via Possession Path Inference from Player Trajectories*
-arXiv [2602.12080v2](https://arxiv.org/html/2602.12080v2)
+**Split the decision into two heads.** Separate dead/alive from home/away, with independent evidence,
+combined in the decoder. This is the single largest structural decision in the project and it comes
+directly from the Borghesi ablation. The published baseline, by contrast, decides `D` from ball absence
+and home/away from the single nearest player, which is each head using the wrong signal.
 
-Proposes inferring **possession paths** from player trajectories alone via a CRF — i.e. possession
-without any ball track. Directly relevant to the 41% missing-ball frames.
+**Score ownership over a neighbourhood, not over the nearest player.** For each team, the mean weight
+of its three nearest players to the ball, in metres on a 105.3 × 68.0 pitch. The representation is
+invariant to how many track slots a team happens to own, which turned out to matter: this match has 24
+home slots and 22 away, and a naive sum over slots gave home a structural advantage that showed up as a
+predicted home share of 0.709 against a truth of 0.573.
 
-**Status: unverified.** The HTML body could not be extracted (no text matches on retrieval), so
-nothing in this note depends on it. Treat as a lead for a future iteration, not as evidence.
+**Build dead ball from positive evidence.** Ball absence is one feature among several, not a rule:
+gap length, an out-of-pitch ball, set-piece intervals, stationary-ball duration, player stillness,
+half boundaries. The reason is measured rather than argued — treating absence as sufficient caps `D`
+recall at 0.21 on this data.
+
+**Use acausal multi-scale context.** Position, velocity, visibility and ownership at log-spaced lags
+from 0.4 s to 64 s, in both directions. Lang's feature set is the template; the acausality is free
+because the submission is scored offline.
+
+**Decode with duration constraints.** Viterbi over `{H, A, D}` with asymmetric switch costs, then a
+minimum-dwell cleanup. `CHALLENGE.md` settles the part that is easy to get wrong: a stoppage between
+two runs of the same team keeps them separate, so cleanup must never merge a dead stretch.
+
+**Do not tune on the five public minutes.** `EVALUATION.md` shows the window picking the wrong
+smoothing variant for a one-parameter baseline, and the possession count and mean duration published
+for that window is precisely the quantity one would fit. Our constants come from football priors and
+from label-free structure over the whole match. Where we did use the window, the submitted document
+says so in full.
+
+**Ruled out from the start**, on evidence and budget: video-based possessor recognition, end-to-end
+ball reconstruction, and the broadcast feed — unsynchronised to the tactical video, with usable
+homography on 65.8% of its frames, and requiring an invented alignment.
 
 ---
 
-## 6b. Empirical findings from this dataset (verified locally, not from the literature)
-Measured with `pipeline/checks/diag.py` and the public window. These are *our* numbers and are the ones the
-design actually leans on; they are tagged `[verified locally]` throughout §10.
+## 6. What this dataset told us that no paper could
 
-| finding | measurement | consequence |
+These are ours, measured with `pipeline/checks/diag.py` and on the public window. The design leans on
+them harder than on anything published. `[local]`
+
+| finding | measurement | what it drove |
 |---|---|---|
-| Ball beyond the touchline/goal line (coordinates outside [0, 1]) | 27.6% of dead frames, **0.0% of live frames** | near-pure evidence for `D`; worth 4.0 log-odds |
-| Mean tracked player speed | 1.43 m/s dead vs 2.38 m/s live | movement is the dead-ball signal that survives an absent ball (consistent with Lang et al.) |
-| Share of players above 3 m/s | 8.7% dead vs 30.6% live | strongest single movement feature |
-| Ball absent | 33.6% of dead frames vs 6.4% of live frames | absence is evidence but far from sufficient — the published baseline treats it as necessary and sufficient, which caps its `D` recall at 0.21 |
-| Set-piece interval | covers 15.9% of the public window but 45.4% of its dead frames | restarts are where dead ball concentrates |
-| Track slots | 24 home / 22 away in the metadata | a sum over slots biases ownership toward home; predicted alive home share ran 0.71 vs truth 0.57 |
+| ball coordinates outside the pitch | 27.6% of dead frames, 0.0% of live ones | a near-pure `D` signal, worth 4.0 log-odds |
+| mean tracked speed | 1.43 m/s dead, 2.38 m/s live | movement is the dead-ball signal that survives a lost ball |
+| share of players above 3 m/s | 8.7% dead, 30.6% live | the strongest single movement feature |
+| ball absent | 33.6% of dead frames, 6.4% of live ones | absence is evidence, far from sufficient |
+| set-piece intervals | 15.9% of the window, 45.4% of its dead frames | restarts are where dead ball concentrates |
+| track slots | 24 home, 22 away | an unnormalised sum over slots biases ownership toward home |
+| team centroid nearer the ball, ball absent | the *defending* team, 384 of 384 | the formation term enters with a negative sign |
+| set piece + visible ball still for 4 s | P(dead) = 0.830, base rate 0.196 | the largest single gain in the project, found by looking at the video |
 
-
-
-## 6c. Second research pass: duration models and hybrid/learned combinations
-
-Asked whether a learned or combined model could beat the hand-set priors, we searched again. The
-answer the literature gives is consistent and narrow:
-
-| source | finding | what it implies for us |
-|---|---|---|
-| Semi-Markov models of football sequences (Sci Rep 2026, [s41598-026-52938-1](https://www.nature.com/articles/s41598-026-52938-1)) | duration-aware state models beat memoryless baselines because sports states are not memoryless | the constant switch penalty is the wrong shape in principle; an HSMM is the correct instrument |
-| Hybrid rules + ML descriptions of production pipelines ([DataField](https://datafield.dev/professional-soccer-analytics/part-04/chapter-23/), [PLOS ONE 2023](https://journals.plos.org/plosone/article?id=10.1371%2Fjournal.pone.0298107)) | rules handle explicit, well-defined events (>90% for set pieces in one tracking study); ML handles ambiguous classification; post-processing adds smoothing and consistency | our architecture already matches this shape |
-| Self-training / pseudo-labelling for scarce labels (ECCV 2024, [pdf](https://www.ecva.net/papers/eccv_2024/papers_ECCV/papers/01205.pdf)) | reduces annotation need but **propagates the teacher's errors** | a student of our own output cannot add information the rules do not already encode |
-| SoccerNet Game State Reconstruction 2025 ([baseline](https://www.soccer-net.org/tasks/game-state-reconstruction), [CVPRW 2025 winner](https://openaccess.thecvf.com/content/CVPR2025W/CVSPORTS/papers/Golovkin_From_Broadcast_to_Minimap_Achieving_State-of-the-Art_SoccerNet_Game_State_Reconstruction_CVPRW_2025_paper.pdf)) | predicts positions, roles, team affiliation, jersey numbers — **not possession** | no public model to borrow; team assignment is a different task |
-| Tracking + detection pipelines ([IJICIC](http://www.ijicic.org/ijicic-220107.pdf)) | YOLOv8 + ByteTrack for continuous trajectories | the video route, already ruled out on budget |
-
-Two claims were then tested on this data rather than assumed, and both failed to improve the ranking
-metric (details and numbers in [pipeline.md](pipeline.md), Step 6):
-
-1. **A strongly predictive feature can still be harmful.** Team spread separates possession at
-   0.840 vs a 0.612 base (visible ball) with the same sign when the ball is absent, so it is genuine
-   evidence — but adding it as an additive logit makes the decoder confident enough to stop
-   switching, collapsing the possession count from 18 to 8 in the public window while *raising*
-   macroF1. A textbook instance of the per-frame / possession-level disagreement the challenge is
-   built on.
-2. **Self-training cannot beat its teacher.** A gradient-boosted emission trained on our own
-   pseudo-labels generalises across halves (92.8% out-of-fold agreement, so the features do
-   generalise) yet every mixture weight degraded `spellF1` (0.4800 → 0.4000). It learns the
-   teacher's per-frame decisions without its structural decoding — exactly the error propagation the
-   literature warns about.
-
-**Conclusion of the second pass:** the remaining headroom is in *sequence structure*, not in feature
-engineering or in a learned classifier. The specific instrument the literature points to that we have
-not built is a hidden semi-Markov decoder with explicit per-state duration distributions, replacing
-the constant switch penalty plus minimum-dwell cleanup.
-
-## 7. What the literature does *not* solve for this competition
-
-| gap | detail | consequence |
-|---|---|---|
-| **Possession-level metrics** | Every paper reports frame accuracy/F1. None reports possession segmentation quality, count error, or one-to-one matching. | A frame-level SOTA system can rank badly here. The score is made in the decoding layer, not the classifier. |
-| **No in-domain training labels** | Those papers had vendor- or manually-labelled data from dozens of matches (102 Bundesliga, 36 La Liga/Serie A, "selected games"). We have 7,500 frames we may not train or tune on. | Supervised emission models must be trained on *other games* (allowed) or on pseudo-labels (allowed), both of which carry domain-mismatch or imitation risk. |
-| **Their `D` is easier than ours** | Vendor-labelled stoppages, ~40% dead, clean definitions. | Our `D` is derived from corrected tracking, includes the 2,934 all-`D` frames before the H2 kickoff, and our ball is absent 41% of the time. Their dead-ball accuracy is not transferable as-is. |
-| **Ball quality** | Their optical tracking is described as high quality; ours is explicitly automatic, uncorrected, 46 swapping anonymous slots, ball missing 41% of graded frames. | All published accuracies are optimistic for us. Our floor (spellF1 0.2433) is the honest reference, not 86%. |
+The last two rows are the ones we would underline. Both are counter-intuitive, both were measured
+before any code changed, and the second was found by rendering a disagreement with the ground truth and
+watching it, not by reading.
 
 ---
 
-## 8. Design decisions derived from the evidence
+## 7. The second pass: duration models and learned combinations
 
-Ordered by expected gain per day of work. `E` = expected effect on the ranking metric.
+Halfway through, we went back to the literature to ask whether a learned or hybrid model could beat
+hand-set priors. The answer was consistent and narrow.
 
-### D1 — Split the decision into two heads
-Separate **dead/alive** from **H vs A**, with independent evidence, then combine in the decoder.
-*Evidence*: Borghesi ablation (ball 58.4% vs top-5 players 79.4%; ball 83.6% on alive/dead); Lang
-92% with no ball at all.
-*Why it fixes us*: the current floor decides `D` from ball absence (recall 0.21) and H/A from one
-nearest player (team accuracy 0.835). Each head is using the other head's weak signal.
-`E`: large — this is where `D` recall and `team_acc` are both recovered.
+Semi-Markov models of football sequences beat memoryless baselines because sports states are not
+memoryless, which says the constant switch penalty is the wrong shape in principle and a hidden
+semi-Markov decoder is the right instrument. Descriptions of production pipelines are hybrid by
+construction — rules for explicit, well-defined events, learning for ambiguous classification, then
+post-processing for consistency — which is the shape we already had. Self-training for scarce labels
+reduces annotation need but propagates the teacher's errors. And the SoccerNet game-state task
+predicts positions, roles, team affiliation and jersey numbers, but not possession, so there was no
+public model to borrow.
 
-### D2 — Ownership evidence = weighted k-nearest neighbourhood, not nearest player
-Distances in metres (105.3 × 68.0), per-team weights over the k nearest, plus team-shape terms
-(count of each team's players within a radius of the ball, ball-to-team-centroid ratio) and
-**holder continuity** (decaying prior for the last confirmed controller).
-*Evidence*: Borghesi top-5-players ablation; "team/role features are most important for possession";
-Link & Hoernig's control-vs-action distinction supplies the semantic ("a touch is not a change").
-`E`: moderate on frames; large indirectly because clean evidence reduces spurious possessions.
+We then tested the two actionable claims on this data instead of assuming them, and both failed to
+improve the ranking metric.
 
-### D3 — `D` by positive evidence, with ball absence as one feature among several
-Evidence sources: length and location of ball-track gaps; Smart Tagging `SET PIECES` (throw-in,
-corner, goal kick, free kick — every restart ends a dead stretch); kickoff anchors; half
-boundaries; formation signature of stoppage (players converging, low aggregate speed) which is what
-Lang actually learns.
-*Evidence*: Lang (stoppages from player movement, 92%); Borghesi (ball is the strongest dead/alive
-cue); local diagnosis (D recall 0.21).
-`E`: large — `D` boundaries are what split possessions; a missed `D` merges two possessions into one
-wrong one, a phantom `D` splits one possession into two.
+**A strongly predictive feature can still be harmful.** Team spread separates possession at 0.840
+against a 0.612 base rate with the ball visible, with the same sign when it is absent. Added as an
+additive logit it raised `macroF1` from 0.7666 to 0.7856 and collapsed the window's possession count
+from 18 to 12, dropping `spellF1` to 0.4000. A per-frame feature that is *too* convincing makes the
+decoder stop switching.
 
-### D4 — Multi-scale acausal features
-Position, velocity, acceleration (and ball position/visibility flags) at log-spaced lags ~0.4 s to
-80 s, centred (future included). Add explicit **NaN/missing indicators** per slot and for the ball.
-*Evidence*: Lang's 1,320 features → 92% with AdaBoost; Borghesi feeds missing-data indicators;
-acausality declared free for an offline submission.
-`E`: moderate directly, large as the substrate for D7.
+**Self-training cannot beat its teacher.** A gradient-boosted emission trained out-of-fold on our own
+pseudo-labels agrees with the rules 92.8% of the time, which is a genuinely useful check that the
+features generalise across halves. Every mixture weight still degraded `spellF1` (0.4800 → 0.4000 at
+the time of the test), because it learns the per-frame decisions without the structural decoding.
 
-### D5 — Structured decoding with duration constraints (the differentiator)
-Hidden semi-Markov / Viterbi over {H, A, D} with: switch penalty encoding "a possession lasts
-~10–20 s"; **min dwell ~1–2 s** per state; **min possession length ~2 s**; merge same-team runs
-separated by short `D`; drop sub-minimum possessions.
-*Evidence*: Lang's 3.64 s median filter and <2 s stoppage exclusion; the challenge's own baseline
-sweep (spellF1 0.0486 → 0.2433 from smoothing alone; `[EVALUATION.md](../EVALUATION.md)`).
-*Local measurement*: the floor produces 19 spurious possessions and 29 transitions against 20 real
-ones on the public window; removing half the spurious possessions lifts F1@IoU0.5 from 0.326 to
-~0.42, removing nearly all of them to ~0.58 (upper bound, ignores the recall cost).
-`E`: largest single effect available to us.
-
-**Measured after implementation** (`docs/pipeline.md`): argmax → Viterbi → cleanup took the match
-from 918 to 436 possessions (mean 3.55 s → 8.07 s). Multi-scale context alone was worth 918 → 495;
-the switch penalty then 495 → 436. The two "confidence" ideas (interpolation span discount,
-distance gate) were **nearly neutral** — worth recording, because they were motivated by the
-literature and did not pay off.
-
-**Correction to T5 above.** A min-dwell merge must never merge the same team *across* a dead
-stretch: CHALLENGE.md settles that `H H D D H H` is two possessions, and merging across `D` would
-actively destroy the metric. Short `D` is absorbed into a possession; long `D` is a genuine break.
-
-### D6 — Do not tune on the 5 public minutes
-*Evidence*: `[EVALUATION.md](../EVALUATION.md)` — the window picks the wrong smoothing variant even
-for a one-parameter baseline; the possession count/mean duration published for that window is
-precisely the quantity one would be tempted to fit.
-*Policy*: switch penalty and min-dwell come from football priors (10–20 s possessions) stated as
-priors in the technical doc, plus **label-free** full-match sanity checks (does `D` align with
-set-piece tags? is the predicted possession count plausible per half? is home share in a plausible
-band?), plus `--bootstrap 1000` before believing any delta.
-
-### D7 — Learned emission model: stretch goal, not a commitment
-If D1–D5 plateau, fit **AdaBoost / LightGBM on D4 features** (CPU, minutes) — the configuration that
-won in Lang — rather than a TCN. Rationale: Lang's tabular model beat sequence models on the
-dead/alive head, and our label budget is the binding constraint, not model capacity.
-Training labels must come from **other games** (Metrica's open 3-match dataset, same vendor and
-format) or from algorithmic pseudo-labels; never from this match.
-
-### D8 — Explicitly documented non-goals
-Video-based possessor recognition (Peral), end-to-end Ball Radar, and the broadcast feed. Each is
-evidence-backed but costs 2+ days of infrastructure; mention them as *considered and dropped*, with
-the reason, in the technical document.
+The conclusion we drew is the one that shaped the last day of work: the remaining headroom is in
+sequence structure, and the specific unbuilt instrument is an explicit duration model.
 
 ---
 
-## 9. Mapping to the required technical document
+## 8. How the reading maps onto the submitted document
 
-[SUBMISSION.md](../SUBMISSION.md) asks for six things; this file supplies the citations for four:
-
-| required section | material here |
-|---|---|
-| approach and why | §8 D1–D5; §1 ablations justify the two-head design |
-| assets used / dropped | §4 and D8 (video, broadcast dropped with reasons) |
-| training data | §7 (none from this match); D7 names the only permitted external source |
-| possession rules implemented | §5 (Link & Hoernig taxonomy), D2/D3 definitions, D5 duration parameters |
-| limitations | §7 table; §2 boundary-timing ceiling; §10 evidence quality |
-| reproduction | not covered here — see the implementation repo |
+`SUBMISSION.md` asks for six things. This file supplies the citations for four of them: the approach
+and why (§1, §2, §5), the assets considered and dropped (§3), the training-data position (§4), and the
+possession rules implemented (§3 and the Link & Hoernig vocabulary). The limitations section in the
+submitted document draws on §4 and §9 here. Reproduction belongs to the repository, not to this file.
 
 ---
 
-## 10. Evidence quality
+## 9. Evidence quality, stated plainly
 
 | claim | status | note |
 |---|---|---|
-| Borghesi: 86.2% possession / 89.2% dead-alive, +7.3 / +33.2 pp | `[abstract]` | publisher and institutional PDFs returned HTTP 403; figures from the DOI abstract page and search-provider summary of the accepted manuscript |
-| Borghesi ablation: ball-only 58.35%, top-5 players 79.41%, ball-only alive/dead 83.62% vs 88.25% | `[summary]` | read from a search-provider synthesis of the accepted version; **re-read the PDF before quoting in the submission** |
-| Borghesi inputs include team, role, player ID, missing-data indicators; permutation-invariant aggregation; 16 fps | `[summary]` | as above |
-| Lang: 92.0% acc / 93.1% F1; 1,320 features; 15 lags 0.4–80 s; 3.64 s median filter; <2 s excluded; 1.8 s / 1.7 s timing error; 102 matches, 47 test | `[summary]` | synthesised from nature.com article + table 1; the 1,320 = 22 × 4 × 15 arithmetic is **our inference** from the stated count, not a quoted formula |
-| Kim et al.: Set Transformer + hierarchical Bi-LSTM, intermediate possession prediction, reality loss | `[abstract]` | no metrics retrieved |
-| Peral: 36 matches, ~0.6 s event timing, ResNet50/TSM | `[summary]` | two papers conflated in retrieval; attribute carefully (VISAPP 2025 = possessor + events; WACV 2026 = ball trajectory/state/possessor from tactical footage) |
-| PathCRF | **unverified** | body not extractable; do not cite |
-| Local numbers: D recall 0.21, 19 spurious possessions, 29 vs 20 transitions, spellF1 by threshold | **verified locally** | `evaluation/reports/baseline_smooth50.json`, `baseline_smooth50_transitions.csv` |
+| Borghesi: 86.2% possession, 89.2% dead/alive | `[abstract]` | publisher and institutional PDFs returned 403; figures from the DOI abstract page |
+| Borghesi input ablation: 58.35% / 79.41% / 83.62% | `[summary]` | second-hand synthesis of the accepted manuscript; **this is the number our two-head design rests on**, so it should be re-read from the PDF before anyone builds on it |
+| Borghesi: team, role and missing-data inputs; permutation-invariant aggregation | `[summary]` | as above |
+| Lang: 92.0% accuracy, 93.1% F1, 1,320 features, 15 lags, 3.64 s filter | `[summary]` | from the nature.com article and Table 1; the 1,320 = 22 × 4 × 15 arithmetic is our inference from the stated count, not a quoted formula |
+| Lang: 1.8 s / 1.7 s start and end timing error | `[summary]` | used only to calibrate our expectations, not in any decision rule |
+| Kim et al.: Set Transformer + hierarchical Bi-LSTM, possession as an intermediate task | `[abstract]` | no metrics were retrievable |
+| Peral et al.: 36 matches, ~0.6 s event timing | `[summary]` | two papers conflated during retrieval; the VISAPP 2025 entry is possessor + events, the WACV 2026 entry is ball trajectory, ball state and possessor from tactical footage |
+| PathCRF | unverified | body text not extractable; nothing here depends on it |
+| every `[local]` number in §6 | measured here | reproducible with `pipeline/checks/diag.py`, `pipeline/checks/verify.py` and the public window |
 
-**Action before the deadline:** retrieve the Borghesi accepted PDF (institutional access, or request
-from the authors) and the Lang feature appendix, and replace `[summary]` rows with verified text.
+The honest summary: the design rests on a second-hand ablation table and on a set of measurements we
+made ourselves. That is not ideal, and it is also why the local measurements carry the weight in the
+submitted document. Where the two disagreed, we trusted the local one — that is how the formation sign
+and the set-piece-still term were found, and both of them beat what the literature suggested.
 
 ---
 
-## 11. Sources
+## 10. Sources
 
-- Borghesi M., Dusty Costa L., Morra L., Lamberti F. (2023). *Using Temporal Convolutional Networks
-  to Estimate Ball Possession in Soccer Games.* Expert Systems with Applications 234:119780.
-  DOI [10.1016/j.eswa.2023.119780](https://doi.org/10.1016/j.eswa.2023.119780)
+- Borghesi M., Dusty Costa L., Morra L., Lamberti F. (2023). *Using Temporal Convolutional Networks to
+  Estimate Ball Possession in Soccer Games.* Expert Systems with Applications 234:119780.
+  [doi:10.1016/j.eswa.2023.119780](https://doi.org/10.1016/j.eswa.2023.119780)
 - Lang S., Wild R., Isenko A., Link D. (2022). *Predicting the in-game status in soccer with machine
   learning using player movement data.* Scientific Reports 12:6843.
   [doi:10.1038/s41598-022-19948-1](https://doi.org/10.1038/s41598-022-19948-1)
 - Kim H. et al. (2023). *Ball Trajectory Inference from Multi-Agent Sports Contexts Using Set
-  Transformer and Hierarchical Bi-LSTM.* [arXiv:2306.08206](https://arxiv.org/abs/2306.08206)
+  Transformer and Hierarchical Bi-LSTM.* [arXiv:2306.08206](https://arxiv.org/abs/2306.08206) ·
+  [code](https://github.com/hyunsungkim-ds/ballradar)
 - Peral M., Capellera G., Rubio A., Agudo A. et al. (2025). *Temporally Accurate Events Detection
   Through Ball Possessor Recognition in Soccer.* VISAPP 2025.
   [PDF](https://www.scitepress.org/Papers/2025/133177/133177.pdf)
 - Peral M., Capellera G., Ferraz L., Rubio A., Agudo A. (2026). *Multi-Modal Soccer Scene Analysis
-  with Masked Pre-Training.* WACV 2026. [PDF](https://openaccess.thecvf.com/content/WACV2026/papers/Peral_Multi-Modal_Soccer_Scene_Analysis_with_Masked_Pre-Training_WACV_2026_paper.pdf)
+  with Masked Pre-Training.* WACV 2026.
+  [PDF](https://openaccess.thecvf.com/content/WACV2026/papers/Peral_Multi-Modal_Soccer_Scene_Analysis_with_Masked_Pre-Training_WACV_2026_paper.pdf)
 - Vidal-Codina et al. (2022). *Automatic event detection in football using tracking data.*
   [arXiv:2202.00804](https://arxiv.org/abs/2202.00804)
 - Link D., Hoernig M. (2017). *Individual ball possession in soccer.* PLOS ONE 12(7):e0179953.
@@ -394,12 +270,8 @@ from the authors) and the Lang feature appendix, and replace `[summary]` rows wi
 - (unverified) *PathCRF: Ball-Free Soccer Event Detection via Possession Path Inference from Player
   Trajectories.* [arXiv:2602.12080v2](https://arxiv.org/html/2602.12080v2)
 
-Local, authoritative for scoring: [CHALLENGE.md](../CHALLENGE.md), [DATA.md](../DATA.md),
-[EVALUATION.md](../EVALUATION.md), `evaluation/possession_metrics.py`.
-
----
-
-## 12. BibTeX for the technical document
+Authoritative for scoring, and locally readable: [CHALLENGE.md](../CHALLENGE.md),
+[DATA.md](../DATA.md), [EVALUATION.md](../EVALUATION.md), `evaluation/possession_metrics.py`.
 
 ```bibtex
 @article{borghesi2023tcn,
@@ -462,17 +334,3 @@ Local, authoritative for scoring: [CHALLENGE.md](../CHALLENGE.md), [DATA.md](../
   doi     = {10.1371/journal.pone.0179953}
 }
 ```
-
----
-
-## 13. Open decisions (unresolved at time of writing)
-
-1. **Emission strategy**: rules-only (deterministic, no data dependency) vs a trained tabular model
-   (AdaBoost/LightGBM on D4 features). Evidence favours learned emissions *if* labels exist; the
-   rule-based path is the safe 3–4 day plan with learning as a stretch.
-2. **External label source** for D7, if taken: Metrica's open 3-match dataset (same vendor, same EPTS
-   format, event CSVs from which possession can be derived algorithmically) — allowed and low-risk
-   in format, but only 3 matches and a different league/competition context.
-3. **`D` edge refinement**: whether to spend effort narrowing the ~1.7–1.8 s boundary error
-   (belief: expensive, low payoff) or to spend it on possession-level structure (belief: cheap, high
-   payoff).
