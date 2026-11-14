@@ -45,6 +45,7 @@ def style():
         "xtick.color": MUTED,
         "ytick.color": MUTED,
         "svg.fonttype": "path",
+        "svg.hashsalt": "nexus",  # stable element ids, so regenerating gives a clean diff
         "figure.facecolor": PAPER,
         "axes.facecolor": PAPER,
     })
@@ -52,7 +53,8 @@ def style():
 
 def save(fig, name):
     path = os.path.join(HERE, name)
-    fig.savefig(path, format="svg", bbox_inches="tight", pad_inches=0.12)
+    fig.savefig(path, format="svg", bbox_inches="tight", pad_inches=0.12,
+                metadata={"Date": None})
     plt.close(fig)
     print("wrote", os.path.relpath(path, ROOT))
 
