@@ -24,6 +24,9 @@ evaluation/results/*.csv
 # information about the answer. They ship so that a fresh clone has something real to score.
 !evaluation/results/baseline_*.csv
 evaluation/reports/
+# Two files under reports/ are tracked deliberately, by `git add -f`: nexus/nexus_final.json and
+# ablations/abl_final.json. They are aggregates only (F1, counts, latency) and are the evidence
+# behind the technical document's tables; everything else in here is regenerated output.
 evaluation/scoreboard.csv
 
 # -- gated data --------------------------------------------------------------------------------

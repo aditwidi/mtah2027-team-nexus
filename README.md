@@ -1,3 +1,59 @@
+# Team Nexus — More than a Hack 2027, Phase 1: Ball Possession
+
+**Submission repository.** Team Nexus's entry for [More than a Hack 2027](https://landing.mobileworldcapital.com/more-than-a-hack-2027),
+Phase 1: one label (`H` / `A` / `D` / `X`) for each of the 199,319 frames of the tactical video.
+
+| | |
+|---|---|
+| Team | **team-nexus** |
+| Submission file | `team-nexus.csv` — 199,319 rows, `frame,label` |
+| Technical document | [`docs/technical-document.md`](docs/technical-document.md) |
+| Method | evidential per-frame scores + a structured Viterbi decode; **no learned model, no training data, no video** |
+| Public 5 minutes | **macroF1 0.7666 · spellF1 0.4800** (published floor `baseline_smooth50`: 0.6207 / 0.3256) |
+
+## Reproduce the submission
+
+```bash
+pip install -r requirements-lock.txt          # python >=3.11 (measured on 3.14.7)
+                                              # or `pip install -r requirements.txt` on 3.8+
+export MTAH_DATA_DIR=/path/to/mtah2027        # the gated match bundle; see data/README.md
+
+python -m pipeline.data.features                     #  7.6 s -> artifacts/features.npz
+python -m pipeline.cli.submit --out team-nexus.csv   #  2.1 s -> the submission file
+python evaluation/validate_submission.py team-nexus.csv
+```
+
+Deterministic: numpy only, no RNG, fixed feature ordering — the same bundle gives a byte-identical
+file. The submitted file's `md5` is recorded in §8 of the technical document.
+
+Check it and reproduce the evidence:
+
+```bash
+python evaluation/run_evaluation.py   # macroF1 / spellF1 on the 5 published minutes
+python -m pipeline.cli.ablate         # the label-free ablation table (no labels exist there)
+python -m pytest -q                   # 36 tests, no match data required, < 1 s
+```
+
+## What is ours
+
+| path | what |
+|---|---|
+| `pipeline/data/` | readers (everything indexed to the video frame) and the 197-channel feature matrix |
+| `pipeline/model/` | emissions and priors, Viterbi + structural cleanup, learned-emission experiments |
+| `pipeline/checks/` | label-free diagnostics, the Smart-Tagging phase oracle, a video overlay renderer |
+| `pipeline/cli/` | `submit`, `ablate` |
+| `docs/technical-document.md` | the submitted technical document (approach, rules, training data, limitations, reproduction) |
+| `docs/pipeline.md` | per-step measurements: what was tried, kept, and rejected |
+| `docs/references.md` | literature review, and the design decision each source drove |
+| `tests/` | 36 tests, no match data needed |
+
+The match bundles are **not** in this repository — `data/` and `artifacts/` are gitignored, and
+nothing here redistributes the gated assets or a reconstruction of them. Everything below the line
+is the organisers' challenge repository (MIT), kept verbatim so the task definition, the scorer and
+the public ground truth sit next to the code that uses them.
+
+---
+
 # More than a Hack 2027 — Phase 1: Ball Possession
 
 **Organised by [Metrica Sports](https://metrica-sports.com), [FC Barcelona](https://www.fcbarcelona.com)

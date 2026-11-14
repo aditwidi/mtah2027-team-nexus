@@ -1,10 +1,11 @@
 # Frame-level ball possession — technical document
 
 **More than a Hack 2027** · Team Nexus · FC Barcelona vs Athletic Club, LaLiga 2024-25 MD2
-Submission: `frame,label` · 199,319 rows · labels `H` / `A` / `D` / `X`
+Repository: **[github.com/aditwidi/mtah2027-team-nexus](https://github.com/aditwidi/mtah2027-team-nexus)**
+Submission: `team-nexus.csv` · `frame,label` · 199,319 rows · labels `H` / `A` / `D` / `X`
 
-> Upload this file as `<team_name>.md`. It is written to be read alongside the repository, which is
-> the authority on every number: `docs/references.md` (evidentiary basis),
+> Uploaded as `team-nexus.md`. It is written to be read alongside the repository, which is the
+> authority on every number: `docs/references.md` (evidentiary basis),
 > `docs/pipeline.md` (per-step measurements), `pipeline/` (the implementation).
 
 ---
@@ -30,7 +31,7 @@ The whole submission regenerates in **10 seconds** from the data bundle:
 
 ```bash
 python -m pipeline.data.features          # 7.6 s -> artifacts/features.npz
-python -m pipeline.cli.submit --out nexus.csv   # 2.1 s -> the submission file
+python -m pipeline.cli.submit --out team-nexus.csv   # 2.1 s -> the submission file
 ```
 
 ---
@@ -231,7 +232,8 @@ therefore not a result, and we do not report third decimal places as if they wer
 ## 8. Reproduction
 
 ```bash
-# 1. environment (exact versions used; python 3.14.7)
+# 1. environment (exact versions used; python 3.14.7). On python 3.8+ the loose requirements.txt
+#    is enough -- the lock is only what these numbers were measured against.
 pip install -r requirements-lock.txt
 
 # 2. data (gated; see DATA.md). Either ./data or MTAH_DATA_DIR
@@ -239,16 +241,16 @@ export MTAH_DATA_DIR=/path/to/mtah2027
 
 # 3. build the submission — deterministic, no randomness, ~10 s
 python -m pipeline.data.features
-python -m pipeline.cli.submit --out nexus.csv
+python -m pipeline.cli.submit --out team-nexus.csv
 
 # 4. verify exactly what the organisers check
-python evaluation/validate_submission.py nexus.csv
+python evaluation/validate_submission.py team-nexus.csv
 
 # 5. optional: score against the public window, and reproduce the ablation table
 python evaluation/run_evaluation.py
 python -m pipeline.cli.ablate
 
-# 6. tests (35, no match data required, <1 s)
+# 6. tests (36, no match data required, <1 s)
 python -m pytest tests/ -q
 ```
 
@@ -260,8 +262,14 @@ cleanup, boundary refinement), `pipeline/cli/submit.py` (the CSV), `pipeline/che
 `docs/references.md` and `docs/pipeline.md` carry the evidence and the per-step measurements. The
 match data is **not** in the repository and is gitignored.
 
+The two reports the tables in §1 and §6 come from are committed verbatim —
+`evaluation/reports/nexus/nexus_final.json` (public window) and
+`evaluation/reports/ablations/abl_final.json` (label-free whole match) — so the numbers can be
+checked without the gated bundle. Both are aggregates only: no frame-level data.
+
 Determinism: numpy only, no RNG, no threads-dependent reduction, fixed ordering of feature columns.
-The same input bundle produces byte-identical output.
+The same input bundle produces byte-identical output — the submitted file is
+`md5 4141029a8480a78454ede4906280f270` (1,682,773 bytes).
 
 ---
 
