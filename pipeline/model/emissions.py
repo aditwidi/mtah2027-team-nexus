@@ -11,7 +11,7 @@ This is D1 of `docs/references.md` -- the two heads are kept apart on purpose:
 
 Every constant below is a **stated prior**, not a fitted value. That is deliberate: the 5 minutes of
 public truth may not be used to tune ([EVALUATION.md](../../EVALUATION.md)), so each number is
-justified by football or by the cited literature, and the ablation in `pipeline/ablate.py` reports
+justified by football or by the cited literature, and the ablation in `pipeline/cli/ablate.py` reports
 what each one costs. Units are log-odds, so they add and can be argued about individually.
 
 Sign convention: higher = more likely. The decoder takes these as log-emissions and adds transition
@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from . import io
+from ..data import io
 from games import half_video_blocks
 
 HOME, AWAY, DEAD = 0, 1, 2
@@ -165,7 +165,7 @@ def emission_logits(X, names, params=None):
                 "is_graded", "ball_fill_span", "d_home", "d_away")
     missing = [name for name in required if name not in column]
     if missing:
-        raise KeyError("features are missing {}; rebuild with python -m pipeline.features"
+        raise KeyError("features are missing {}; rebuild with python -m pipeline.data.features"
                        .format(missing))
 
     present = X[:, column["ball_present"]] > 0.5

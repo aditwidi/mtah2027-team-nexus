@@ -11,14 +11,30 @@ Design rationale, with citations: [references.md](references.md). Scoring contra
 
 ```bash
 pip install -r requirements.txt -r requirements-dev.txt
-python -m pipeline.features        # ~8 s -> artifacts/features.npz (182 x 199,319 float32, 145 MB)
-python -m pipeline.diag --submit   # report + artifacts/diag.json + control submission
+python -m pipeline.data.features         # ~8 s -> artifacts/features.npz (182 x 199,319 float32, 145 MB)
+python -m pipeline.checks.diag --submit  # report + artifacts/diag.json + control submission
 python evaluation/run_evaluation.py
-python -m pytest tests/ -q         # 12 tests, <1 s, no match data needed
+python -m pytest tests/ -q               # 12 tests, <1 s, no match data needed
 ```
 
-`pipeline.features` prints the matrix shape and the number of channels containing NaN (currently
+`pipeline.data.features` prints the matrix shape and the number of channels containing NaN (currently
 **0** — every channel is defined on every frame, which the decoder can rely on).
+
+The package is grouped by role: `pipeline/data/` (readers and the matrix), `pipeline/model/`
+(evidence to labels), `pipeline/checks/` (diagnostics, oracle and visual verification), and
+`pipeline/cli/` (the two commands that write files). Every path below is relative to the
+repository root, which the package resolves once as `io.ROOT`.
+
+### Where output lands
+
+Everything written is gitignored except `docs/`. The source tree stays clean:
+
+| path | what | how it is kept |
+|---|---|---|
+| `artifacts/` | `features.npz`, `diag.json`, submissions, rendered clips | one directory, regenerated on demand |
+| `evaluation/results/` | the CSVs the scorer reads (`control_nearest.csv`, `abl_*.csv`) | flat — the scorer globs `*.csv` |
+| `evaluation/reports/` | per-submission `.json` and `*_transitions.csv` written by `evaluation/run_evaluation.py` | archived by stage in `nexus/`, `ablations/`, `baseline/`, `control/`, with all `*_transitions.csv` under `transitions/`; a fresh scorer run writes flat into `reports/`, so move the new files into their stage folder |
+| `evaluation/scoreboard.csv` | the ranked table | single file at `evaluation/` |
 
 ## What Step 1 produces
 
@@ -84,12 +100,13 @@ On the public window: **spellF1 0.0464, 95 possessions** (published floor `smoot
 
 ## Step 2 (done): the decoder
 
-`pipeline/emissions.py` scores each frame for `H`, `A` and `D` as log-odds; `pipeline/decode.py`
-turns those scores into a possession sequence in two stages; `pipeline/submit.py` writes the file.
+`pipeline/model/emissions.py` scores each frame for `H`, `A` and `D` as log-odds;
+`pipeline/model/decode.py` turns those scores into a possession sequence in two stages;
+`pipeline/cli/submit.py` writes the file.
 
 ```bash
-python -m pipeline.submit --out my_team.csv      # ~2 s, deterministic
-python -m pipeline.ablate --write                # every variant -> evaluation/results/abl_*.csv
+python -m pipeline.cli.submit --out my_team.csv  # ~2 s, deterministic
+python -m pipeline.cli.ablate --write            # every variant -> evaluation/results/abl_*.csv
 python evaluation/run_evaluation.py
 ```
 
@@ -109,7 +126,7 @@ absorbed, with the priority order: same-label neighbour → blip inside a stoppa
 inside a possession → longer neighbour. A dead stretch **never** merges the same team across it,
 because `H H D D H H` is two possessions (CHALLENGE.md) and the metric is built on that.
 
-### What the ablation says (`python -m pipeline.ablate`)
+### What the ablation says (`python -m pipeline.cli.ablate`)
 
 Label-free measurements, full match:
 
@@ -371,16 +388,16 @@ they sit.
 Two tools, because the question has two halves.
 
 ```bash
-python -m pipeline.verify                                    # quantitative, whole match
-python -m pipeline.render --start 45900 --seconds 4 --out artifacts/check.png
-python -m pipeline.render --start 11185 --seconds 20 --video artifacts/clip.mp4
+python -m pipeline.checks.verify  # quantitative, whole match
+python -m pipeline.checks.render --start 45900 --seconds 4 --out artifacts/check.png
+python -m pipeline.checks.render --start 11185 --seconds 20 --video artifacts/clip.mp4
 ```
 
 ### Quantitative: Smart Tagging as an independent soft oracle
 
 Smart Tagging is inferred by a separate process from the same video and names a team for 602 of 638
 phases, so it can be used as an oracle that is **independent of our pipeline and covers the whole
-match** — not ground truth, but evidence. `pipeline/verify.py` checks our labels against it:
+match** — not ground truth, but evidence. `pipeline/checks/verify.py` checks our labels against it:
 
 | check | result | n |
 |---|---|---|
@@ -402,7 +419,7 @@ have the ball outside the pitch.
 
 ### Visual: the tracking projected onto the video
 
-`pipeline/render.py` projects every tracked slot through the frame's homography (the same
+`pipeline/checks/render.py` projects every tracked slot through the frame's homography (the same
 coordinate convention the ATD uses), colours players by team, marks the ball, and burns in the
 predicted label plus the evidence the emission used (ball seen/missing, gap, margin, mean speed, set
 piece, out of play). Output is a contact sheet or an annotated mp4.
@@ -436,7 +453,7 @@ baseline are reported as invalid checks rather than as failures of the submissio
 
 Inspecting the video and the data is explicitly allowed (`RULES.md`: "watching is not the problem").
 Converting what we see into labels, hand corrections, or constants tied to specific frames is not.
-Both tools only *report*; neither writes a submission, and no constant in `pipeline/emissions.py`
+Both tools only *report*; neither writes a submission, and no constant in `pipeline/model/emissions.py`
 came from a frame we looked at — the two that came from measurement came from aggregate rates over
 hundreds of frames (the dead-gap weight and the centroid sign), documented in Step 5.
 
@@ -510,7 +527,7 @@ Also tested and dropped: number of each team's players ahead of the ball in its 
 
 ### 2. A learned emission combined with the rules — generalises, still loses
 
-`pipeline/learn.py`: a histogram gradient-boosted classifier trained on our own pseudo-labels,
+`pipeline/model/learn.py`: a histogram gradient-boosted classifier trained on our own pseudo-labels,
 **out-of-fold by half** so training and prediction never see the same half, mixed with the rule
 emission at weight `alpha` and decoded by the same Viterbi + cleanup.
 

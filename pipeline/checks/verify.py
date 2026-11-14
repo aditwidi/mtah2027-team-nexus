@@ -13,7 +13,7 @@ Two verifications, neither of which touches the private truth:
    is evidence that is independent of our pipeline, it covers the whole match, and a submission that
    disagrees with it systematically is wrong.
 
-2. **Visual overlay (`pipeline/render.py`).** Project the tracking onto the video with the provided
+2. **Visual overlay (`pipeline/checks/render.py`).** Project the tracking onto the video with the provided
    homography and burn in the predicted label, then look at it.
 
 The line this must not cross (RULES.md): inspecting is allowed, converting what you see into labels,
@@ -29,7 +29,8 @@ import os
 
 import numpy as np
 
-from . import decode, features, io
+from ..data import features, io
+from ..model import decode
 from games import half_video_blocks
 
 # Codes whose Team tag is the team in possession (see io.TAG_POSSESSION_SIGN).
@@ -74,7 +75,7 @@ def phase_consistency(labels, phases, lead_s=2.0, settle_s=3.0, before_s=5.0):
     * attacking transitions -- the tagged team should have the ball within `settle_s`, having not
       had it `before_s` earlier (that is what a transition is);
     * goals -- the scoring team should have had the ball at *some point* in the preceding
-      `before_s`. Deliberately weak: rendering the 20 s before a GOALS tag (pipeline/render.py,
+      `before_s`. Deliberately weak: rendering the 20 s before a GOALS tag (pipeline/checks/render.py,
       frame 45947) shows players converging and then walking apart around the box with the ball
       untracked, i.e. the tag sits at or after the stoppage that follows the goal, not at the shot.
       The first version of this check required majority possession immediately before the tag and

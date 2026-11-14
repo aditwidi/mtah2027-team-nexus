@@ -200,7 +200,7 @@ nothing in this note depends on it. Treat as a lead for a future iteration, not 
 ---
 
 ## 6b. Empirical findings from this dataset (verified locally, not from the literature)
-Measured with `pipeline/diag.py` and the public window. These are *our* numbers and are the ones the
+Measured with `pipeline/checks/diag.py` and the public window. These are *our* numbers and are the ones the
 design actually leans on; they are tagged `[verified locally]` throughout §10.
 
 | finding | measurement | consequence |

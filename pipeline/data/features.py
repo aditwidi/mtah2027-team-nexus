@@ -433,7 +433,7 @@ def save(X, names, folder=ARTIFACTS, source=None):
 def load(folder=ARTIFACTS, source=None):
     path = os.path.join(folder, "features{}.npz".format("_" + source if source else ""))
     if not os.path.isfile(path):
-        raise SystemExit("no features at {} -- run: python -m pipeline.features".format(path))
+        raise SystemExit("no features at {} -- run: python -m pipeline.data.features".format(path))
     data = np.load(path)
     return data["X"], [str(n) for n in data["names"]]
 

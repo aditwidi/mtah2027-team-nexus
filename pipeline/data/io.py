@@ -10,18 +10,15 @@ remember that the ATD counts from 1 while Smart Tagging counts in seconds.
 
 from __future__ import annotations
 
-import os
-import sys
 import xml.etree.ElementTree as ET
 
 import numpy as np
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)
-if ROOT not in sys.path:
-    sys.path.insert(0, ROOT)
-
-from games import GAMES, asset_paths, require  # noqa: E402  (path bootstrap above)
+# Importing the package puts the repository root on sys.path (pipeline/__init__.py), so the
+# upstream top-level games.py is importable without an install step. ROOT is re-exported here
+# because every module reaches the repository root through io.ROOT.
+from .. import ROOT  # noqa: F401
+from games import GAMES, asset_paths, require  # noqa: E402
 
 FPS = 25
 PITCH = GAMES["BAR-ATH"]["pitch"]          # (105.3, 68.0) metres

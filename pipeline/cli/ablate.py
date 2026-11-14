@@ -12,8 +12,8 @@ Every decoder variant is scored twice:
   wrong turn (e.g. a decoder that reports 900 possessions) is visible, not so that the best public
   number can be picked.
 
-    python -m pipeline.ablate --write     # writes evaluation/results/abl_*.csv
-    python evaluation/run_evaluation.py   # scores them all at once
+    python -m pipeline.cli.ablate --write      # writes evaluation/results/abl_*.csv
+    python evaluation/run_evaluation.py        # scores them all at once
 """
 
 from __future__ import annotations
@@ -23,7 +23,9 @@ import os
 
 import numpy as np
 
-from . import decode, diag, features, io
+from ..checks import diag
+from ..data import features, io
+from ..model import decode
 from games import half_video_blocks
 
 # name -> (overrides, use_cleanup).

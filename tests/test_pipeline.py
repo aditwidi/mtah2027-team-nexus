@@ -18,7 +18,8 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from pipeline import diag, features, io  # noqa: E402
+from pipeline.checks import diag  # noqa: E402
+from pipeline.data import features, io  # noqa: E402
 
 
 # ---------------------------------------------------------------------------------------------
@@ -312,7 +313,7 @@ def test_render_scales_projected_pixels_to_the_image():
     """
     from PIL import Image
 
-    from pipeline import render
+    from pipeline.checks import render
 
     image = Image.new("RGB", (960, 540), (0, 0, 0))
     # Identity-in-spirit matrix: normalised pitch (0-1) -> 1920x1080 pixels.

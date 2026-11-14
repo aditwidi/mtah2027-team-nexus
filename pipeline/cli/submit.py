@@ -1,10 +1,11 @@
 """Build the submission file from the features, in one command.
 
-    python -m pipeline.submit                          # artifacts/submission.csv
-    python -m pipeline.submit --out nexus.csv --score   # write it and score it
+    python -m pipeline.cli.submit                            # artifacts/submission.csv
+    python -m pipeline.cli.submit --out nexus.csv --score    # write it and score it
 
-The decoder is `pipeline/decode.py`; the priors it uses are in `pipeline/emissions.py` and are
-documented there. Nothing in this path reads the ground truth.
+The decoder is `pipeline/model/decode.py`; the priors it uses are in
+`pipeline/model/emissions.py` and are documented there. Nothing in this path reads the ground
+truth.
 """
 
 from __future__ import annotations
@@ -17,7 +18,9 @@ import sys
 
 import numpy as np
 
-from . import decode, diag, features, io
+from ..checks import diag
+from ..data import features, io
+from ..model import decode
 from games import half_video_blocks
 
 

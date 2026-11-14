@@ -29,8 +29,8 @@ A 0.781, D 0.694. Boundary latency −1.1 frames, fragmentation 1.29. Full-match
 The whole submission regenerates in **10 seconds** from the data bundle:
 
 ```bash
-python -m pipeline.features          # 7.6 s -> artifacts/features.npz
-python -m pipeline.submit --out nexus.csv   # 2.1 s -> the submission file
+python -m pipeline.data.features          # 7.6 s -> artifacts/features.npz
+python -m pipeline.cli.submit --out nexus.csv   # 2.1 s -> the submission file
 ```
 
 ---
@@ -238,26 +238,27 @@ pip install -r requirements-lock.txt
 export MTAH_DATA_DIR=/path/to/mtah2027
 
 # 3. build the submission — deterministic, no randomness, ~10 s
-python -m pipeline.features
-python -m pipeline.submit --out nexus.csv
+python -m pipeline.data.features
+python -m pipeline.cli.submit --out nexus.csv
 
 # 4. verify exactly what the organisers check
 python evaluation/validate_submission.py nexus.csv
 
 # 5. optional: score against the public window, and reproduce the ablation table
 python evaluation/run_evaluation.py
-python -m pipeline.ablate
+python -m pipeline.cli.ablate
 
 # 6. tests (35, no match data required, <1 s)
 python -m pytest tests/ -q
 ```
 
-Repository layout: `pipeline/io.py` (readers, all indexed to the video frame), `pipeline/features.py`
-(the 197-channel matrix), `pipeline/emissions.py` (the two heads and every prior, with its
-justification), `pipeline/decode.py` (Viterbi, cleanup, boundary refinement), `pipeline/submit.py`
-(the CSV), `pipeline/diag.py` (label-free diagnostics), `pipeline/ablate.py` (the ablation table),
-`tests/`. `docs/references.md` and `docs/pipeline.md` carry the evidence and the per-step
-measurements. The match data is **not** in the repository and is gitignored.
+Repository layout: `pipeline/` is grouped by role. `pipeline/data/io.py` (readers, all indexed to
+the video frame), `pipeline/data/features.py` (the 197-channel matrix), `pipeline/model/emissions.py`
+(the two heads and every prior, with its justification), `pipeline/model/decode.py` (Viterbi,
+cleanup, boundary refinement), `pipeline/cli/submit.py` (the CSV), `pipeline/checks/diag.py`
+(label-free diagnostics), `pipeline/cli/ablate.py` (the ablation table), `tests/`.
+`docs/references.md` and `docs/pipeline.md` carry the evidence and the per-step measurements. The
+match data is **not** in the repository and is gitignored.
 
 Determinism: numpy only, no RNG, no threads-dependent reduction, fixed ordering of feature columns.
 The same input bundle produces byte-identical output.

@@ -1,6 +1,6 @@
 """Render annotated frames: project the tracking onto the video and burn in our own labels.
 
-This is the visual half of verification (the quantitative half is `pipeline/verify.py`). It answers
+This is the visual half of verification (the quantitative half is `pipeline/checks/verify.py`). It answers
 questions the numbers cannot: *does the predicted label match what is on the pitch in this frame*,
 and *why did the model think so*.
 
@@ -11,14 +11,14 @@ public ground-truth label and flags disagreement in red — the 5 published minu
 this kind of check.
 
     # the 5 published minutes, with ground truth side by side (frames 11,185-18,684)
-    python -m pipeline.render --start 11185 --end 18684 --gt evaluation/gt/BAR-ATH_possession_gt_public.csv \
+    python -m pipeline.checks.render --start 11185 --end 18684 --gt evaluation/gt/BAR-ATH_possession_gt_public.csv \
         --video artifacts/public_window.mp4 --fps 25 --width 960
 
     # a contact sheet of one moment
-    python -m pipeline.render --start 45900 --seconds 4 --out artifacts/goal.png
+    python -m pipeline.checks.render --start 45900 --seconds 4 --out artifacts/goal.png
 
     # the whole match, streamed (no disk staging)
-    python -m pipeline.render --full --video artifacts/full.mp4 --fps 5 --width 960
+    python -m pipeline.checks.render --full --video artifacts/full.mp4 --fps 5 --width 960
 
 Decoding and encoding are both pipes: ffmpeg -> raw RGB -> annotate in memory -> ffmpeg. Nothing is
 staged on disk, so memory stays flat regardless of length.
@@ -40,7 +40,7 @@ import numpy as np
 import pandas as pd
 from PIL import Image, ImageDraw
 
-from . import features, io
+from ..data import features, io
 
 HOME_COLOUR = (230, 60, 60)
 AWAY_COLOUR = (60, 110, 230)

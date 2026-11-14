@@ -17,8 +17,8 @@ labels at all -- properties the data itself guarantees:
   official scorer always has something to compare against on the public window.
 
 Usage:
-    python -m pipeline.features      # once, ~4 s + 3 s parse, writes artifacts/features.npz
-    python -m pipeline.diag          # prints the report, writes artifacts/diag.json
+    python -m pipeline.data.features   # once, ~4 s + 3 s parse, writes artifacts/features.npz
+    python -m pipeline.checks.diag     # prints the report, writes artifacts/diag.json
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ import os
 
 import numpy as np
 
-from . import features, io
+from ..data import features, io
 from games import half_video_blocks
 
 LABELS = ("H", "A", "D")

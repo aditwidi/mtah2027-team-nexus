@@ -20,7 +20,7 @@ Two things are measured, and neither reads the private truth:
 * **Label-free structure** of the decoded result (possessions, mean duration, dead share), which must
   stay inside the football priors documented in `docs/references.md`.
 
-    python -m pipeline.learn --alpha 0.5 --write evaluation/results/learned.csv
+    python -m pipeline.model.learn --alpha 0.5 --write evaluation/results/learned.csv
 """
 
 from __future__ import annotations
@@ -32,7 +32,9 @@ import os
 import numpy as np
 from sklearn.ensemble import HistGradientBoostingClassifier
 
-from . import decode, diag, emissions, features, io
+from ..checks import diag
+from ..data import features, io
+from . import decode, emissions
 from games import half_video_blocks
 
 def dataset(features_path=None):

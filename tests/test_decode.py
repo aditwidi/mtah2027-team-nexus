@@ -18,7 +18,8 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from pipeline import decode, emissions, io  # noqa: E402
+from pipeline.data import io  # noqa: E402
+from pipeline.model import decode, emissions  # noqa: E402
 
 N_FRAMES = 400
 
